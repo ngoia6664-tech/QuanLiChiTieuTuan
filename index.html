@@ -316,8 +316,14 @@ function weekTouchesMonth(key, y, m){ return weeksOfMonth(y, m).indexOf(key) >= 
 function makeWeek(key, budgetsFrom){
   var budgets = budgetsFrom
     ? budgetsFrom.map(function(b){ return { id: b.id, name: b.name, limit: b.limit, fixed: !!b.fixed, icon: b.icon }; })
-    : FIXED.map(function(f){ return { id: f.id, name: f.name, limit: data.settings.defaultBudgets[f.id] || 0, fixed: true, icon: f.icon }; });
+    : templateFixed().map(function(f){ return { id: f.id, name: f.name, limit: data.settings.defaultBudgets[f.id] || 0, fixed: true, icon: f.icon }; });
   return { startDate: key, endDate: toKey(addDays(fromKey(key), 6)), income: null, budgets: budgets, transactions: [], note: '' };
+}
+/* Danh mục mặc định dùng cho tuần mới (bỏ các mục người dùng đã xóa) */
+function hiddenFixed(){ return data.settings.hiddenFixed || []; }
+function templateFixed(){
+  var list = FIXED.filter(function(f){ return hiddenFixed().indexOf(f.id) < 0; });
+  return list.length ? list : FIXED.filter(function(f){ return f.id === 'unexpected'; });
 }
 function getWeek(key){ return data.weeks[key] || makeWeek(key); }
 function ensureWeek(key){ if (!data.weeks[key]) data.weeks[key] = makeWeek(key); return data.weeks[key]; }
@@ -627,12 +633,12 @@ function openCat(catId){
   var fixed = b && b.fixed;
   openSheet('<h3>' + (b ? 'Sửa danh mục' : 'Thêm danh mục') + '</h3>' +
     '<div class="lab">Tên danh mục</div><input class="inp" id="cn" maxlength="30" ' + (fixed ? 'disabled ' : '') + 'placeholder="Ví dụ: Đi lại" value="' + esc(b ? b.name : '') + '">' +
-    (fixed ? '<div class="hint">Đây là danh mục cố định, luôn có ở mọi tuần.</div>' : '') +
+    (fixed ? '<div class="hint">Đây là danh mục mặc định. Nếu xóa, các tuần mới cũng sẽ không còn mục này (có thể khôi phục trong Cài đặt).</div>' : '') +
     '<div class="lab">Biểu tượng</div><div class="icurrent"><span class="big" id="icur">' + (b ? iconOf(b) : '💸') + '</span><span class="hint" style="margin:0">Chọn một biểu tượng bên dưới' + (b ? '' : ', hoặc gõ tên để app tự gợi ý') + '</span></div>' +
     '<div id="icons">' + ICON_GROUPS.map(function(g){ return '<div class="igl">' + g[0] + '</div><div class="igrid">' + g[1].map(function(ic){ return '<button type="button" class="ib' + ((b ? iconOf(b) : '💸') === ic ? ' on' : '') + '" data-ic="' + ic + '">' + ic + '</button>'; }).join('') + '</div>'; }).join('') + '</div>' +
     '<div class="lab">Hạn mức tuần này</div>' + moneyField('lim', b ? b.limit : 0) +
     '<div class="hint">Chỉ đổi cho tuần ' + weekLabel(key) + ', không ảnh hưởng các tuần khác.</div>' +
-    '<div class="btns">' + (b && !fixed ? '<button class="del" id="del">Xóa</button>' : '') + '<button data-x="close">Hủy</button><button class="save" id="ok">Lưu</button></div>', function(el, close){
+    '<div class="btns">' + (b ? '<button class="del" id="del">Xóa</button>' : '') + '<button data-x="close">Hủy</button><button class="save" id="ok">Lưu</button></div>', function(el, close){
     wireMoney(el);
     var icon = b ? iconOf(b) : '💸', picked = !!b;
     function setIcon(ic){ icon = ic; el.querySelector('#icur').textContent = ic; Array.prototype.forEach.call(el.querySelectorAll('.ib'), function(x){ x.classList.toggle('on', x.getAttribute('data-ic') === ic); }); }
@@ -648,13 +654,20 @@ function openCat(catId){
       var tl = w.budgets.reduce(function(sum, x){ return sum + (x.limit || 0); }, 0);
       var wi = incomeOf(key); if (wi > 0 && tl > wi) toast('⚠️ Tổng hạn mức ' + money(tl) + ' / ' + money(wi) + ': vượt ' + money(tl - wi) + ' trong tuần');
     };
-    if (b && !fixed) el.querySelector('#del').onclick = function(){
+    if (b) el.querySelector('#del').onclick = function(){
       var n = week.transactions.filter(function(t){ return t.categoryId === b.id; }).length;
+      var others = week.budgets.filter(function(x){ return x.id !== b.id; });
+      if (!others.length) { toast('Cần giữ ít nhất 1 danh mục'); return; }
+      /* Khoản chi của mục bị xóa chuyển sang "Phát sinh", nếu không còn thì sang mục đầu tiên */
+      var target = others.filter(function(x){ return x.id === 'unexpected'; })[0] || others[0];
       close();
-      confirmSheet(n ? 'Xóa "' + b.name + '"? ' + n + ' khoản chi trong danh mục này sẽ được chuyển sang "Phát sinh".' : 'Xóa danh mục "' + b.name + '"?', 'Xóa', function(){
+      confirmSheet((n ? 'Xóa "' + b.name + '"? ' + n + ' khoản chi trong danh mục này sẽ được chuyển sang "' + target.name + '".' : 'Xóa danh mục "' + b.name + '"?') +
+        (fixed ? ' Các tuần mới cũng sẽ không còn mục này.' : ''), 'Xóa', function(){
         var w = ensureWeek(key);
-        w.transactions.forEach(function(t){ if (t.categoryId === b.id) t.categoryId = 'unexpected'; });
+        w.transactions.forEach(function(t){ if (t.categoryId === b.id) t.categoryId = target.id; });
         w.budgets = w.budgets.filter(function(x){ return x.id !== b.id; });
+        if (fixed && hiddenFixed().indexOf(b.id) < 0) data.settings.hiddenFixed = hiddenFixed().concat(b.id);
+        if (data.lastCat === b.id) data.lastCat = target.id;
         commit(); toast('Đã xóa danh mục');
       });
     };
@@ -668,10 +681,9 @@ function openSettings(){
     '<label class="hint" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="neg"' + (s.initialBalance < 0 ? ' checked' : '') + '> Số dư ban đầu là số âm (đang nợ)</label>' +
     '<div class="lab">Thu nhập mặc định mỗi tuần</div>' + moneyField('di', s.defaultIncome) +
     '<div class="hint">Tự cộng vào số dư vào đầu mỗi tuần (thứ Hai), từ tuần ' + weekLabel(startWeekKey()) + ' đến tuần hiện tại. Tuần chưa tới chưa được cộng. Đổi số này sẽ áp dụng cho mọi tuần chưa sửa thu nhập riêng.</div>' +
-    '<div class="lab">Hạn mức mặc định cho tuần mới · Ăn uống</div>' + moneyField('d1', db.food) +
-    '<div class="lab">Shopee</div>' + moneyField('d2', db.shopee) +
-    '<div class="lab">Phát sinh</div>' + moneyField('d3', db.unexpected) +
+    templateFixed().map(function(f, i){ return '<div class="lab">' + (i ? '' : 'Hạn mức mặc định cho tuần mới · ') + f.name + '</div>' + moneyField('d_' + f.id, db[f.id] || 0); }).join('') +
     '<div class="hint">Hạn mức mặc định chỉ áp dụng cho tuần chưa có dữ liệu, không đổi các tuần đã ghi.</div>' +
+    (hiddenFixed().length ? '<div class="btns" style="margin-top:8px"><button id="rst">↩️ Khôi phục danh mục mặc định đã xóa</button></div><div class="hint">Chỉ áp dụng cho tuần mới. Tuần đã ghi có thể dùng "+ Danh mục" để thêm lại.</div>' : '') +
     '<div class="btns"><button data-x="close">Hủy</button><button class="save" id="ok">Lưu</button></div>' +
     '<div class="lab" style="margin-top:22px">Sao lưu dữ liệu</div><div class="btns" style="margin-top:0"><button id="exp">⬇️ Tải file sao lưu</button><button id="imp">⬆️ Khôi phục từ file</button></div>' +
     '<div class="hint">Dữ liệu chỉ nằm trong trình duyệt của máy này. Nên tải file sao lưu mỗi tuần.</div>', function(el, close){
@@ -681,9 +693,11 @@ function openSettings(){
       var ib = digits(el.querySelector('#ib').value);
       s.initialBalance = el.querySelector('#neg').checked ? -ib : ib;
       s.defaultIncome = digits(el.querySelector('#di').value);
-      db.food = digits(el.querySelector('#d1').value); db.shopee = digits(el.querySelector('#d2').value); db.unexpected = digits(el.querySelector('#d3').value);
+      templateFixed().forEach(function(f){ db[f.id] = digits(el.querySelector('#d_' + f.id).value); });
       close(); commit(); toast('Đã lưu cài đặt');
     };
+    var rst = el.querySelector('#rst');
+    if (rst) rst.onclick = function(){ data.settings.hiddenFixed = []; close(); commit(); toast('Đã khôi phục danh mục mặc định'); };
     el.querySelector('#exp').onclick = function(){
       try {
         var blob = new Blob([JSON.stringify(data)], { type: 'application/json' }), a = document.createElement('a');
