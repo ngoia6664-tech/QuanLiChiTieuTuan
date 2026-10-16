@@ -96,6 +96,21 @@ button:active{transform:scale(.97)}
 .bud.over .bar i{background:linear-gradient(90deg,#F43F5E,var(--bad));box-shadow:0 0 12px var(--bad)}
 .bud .msg{margin-top:7px;font-size:12.5px;color:var(--muted)}
 .bud.over .msg{color:var(--bad);font-weight:600}
+.sec .cnt{margin-left:6px;padding:2px 8px;border-radius:20px;font-size:11px;letter-spacing:0;background:rgba(56,189,248,.14);color:var(--sky)}
+.sec .cnt em{font-style:normal;color:var(--bad)}
+.sact{display:flex;align-items:center;gap:6px}
+.tgl{padding:5px 11px;border-radius:20px;font-size:12.5px;font-weight:700;color:var(--muted);border:1px solid var(--line);background:rgba(11,21,48,.7)}
+.budg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.budc{display:block;min-width:0;text-align:left;padding:11px;border-radius:16px;background:var(--card);border:1px solid var(--line);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.budc .h{display:flex;align-items:center;gap:8px;min-width:0}
+.budc .bic{width:30px;height:30px;border-radius:10px;font-size:16px}
+.budc .nm{flex:1;min-width:0;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.budc .bar{height:6px;margin-top:9px}
+.budc .msg{margin-top:6px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.budc.over{border-color:rgba(255,92,138,.6);box-shadow:0 0 30px -14px var(--bad)}
+.budc.over .bic{background:rgba(255,92,138,.14);box-shadow:inset 0 0 0 1px rgba(255,92,138,.4)}
+.budc.over .bar i{background:linear-gradient(90deg,#F43F5E,var(--bad));box-shadow:0 0 12px var(--bad)}
+.budc.over .msg{color:var(--bad);font-weight:600}
 
 .day{margin-top:14px}
 .day .dh{font-size:13px;font-weight:700;color:var(--sky);margin:0 4px 6px}
@@ -213,6 +228,8 @@ textarea.note:focus{outline:2px solid var(--sky);border-color:transparent}
 .btns button{flex:1;padding:14px;border-radius:16px;font-weight:700;border:1px solid var(--line);background:rgba(11,21,48,.7)}
 .btns .save{border:0;color:#fff;background:linear-gradient(135deg,#2563EB,#0EA5E9);box-shadow:0 10px 26px -12px #2563EB}
 .btns .del{flex:0 0 auto;color:var(--bad);border-color:rgba(255,92,138,.4)}
+.dfh{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 6px;font-size:12.5px;color:var(--muted);font-weight:600}
+.dfdel{padding:5px 10px;border-radius:10px;font-size:12px;font-weight:700;color:var(--bad);border:1px solid rgba(255,92,138,.4);background:rgba(255,92,138,.08)}
 .hint{font-size:12.5px;color:var(--muted);margin-top:8px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:60;padding:10px 16px;border-radius:14px;background:var(--solid);border:1px solid var(--sky);box-shadow:0 0 24px -8px var(--sky);font-size:14px;max-width:90%;text-align:center;animation:up .25s ease}
 :focus-visible{outline:2px solid var(--sky);outline-offset:2px}
@@ -221,7 +238,7 @@ textarea.note:focus{outline:2px solid var(--sky);border-color:transparent}
 </head>
 <body>
 <div class="wrap" id="app"></div>
-<div class="dock"><div class="in"><div class="b"><span>Tổng số dư hiện tại</span><b id="dockBal" class="num">0đ</b></div><button class="addbtn" data-act="add-tx">+ Thêm khoản</button></div></div>
+<div class="dock"><div class="in"><div class="b"><span>Tổng số dư hiện tại</span><b id="dockBal" class="num">0đ</b></div><button class="addbtn" data-act="add-tx">➕ Thêm khoản</button></div></div>
 <script>
 (function(){
 'use strict';
@@ -391,7 +408,7 @@ function openSheet(html, build){
   return close;
 }
 function confirmSheet(msg, okLabel, onOk){
-  openSheet('<h3>' + esc(msg) + '</h3><div class="btns"><button data-x="close">Hủy</button><button class="save" id="ok">' + esc(okLabel) + '</button></div>', function(el, close){
+  openSheet('<h3>' + esc(msg) + '</h3><div class="btns"><button data-x="close">✖️ Hủy</button><button class="save" id="ok">' + esc(okLabel) + '</button></div>', function(el, close){
     el.querySelector('#ok').onclick = function(){ close(); onOk(); };
   });
 }
@@ -454,12 +471,20 @@ function render(){
   }
 
   /* Ngân sách */
-  h += '<div class="sec"><h2>Ngân sách</h2><button class="link" data-act="add-cat">+ Danh mục</button></div>';
+  /* Thu gọn: lưới 2 cột nhỏ gọn; mặc định thu gọn khi có hơn 4 danh mục */
+  var compact = data.settings.budCompact != null ? data.settings.budCompact : week.budgets.length > 4;
+  var nOver = week.budgets.filter(function(b){ return b.limit > 0 && spentInCategory(week, b.id) > b.limit; }).length;
+  h += '<div class="sec"><h2>Ngân sách <span class="cnt">' + week.budgets.length + (nOver ? ' · <em>' + nOver + ' vượt</em>' : '') + '</span></h2><span class="sact">' +
+    '<button class="tgl" data-act="toggle-bud" aria-expanded="' + !compact + '">' + (compact ? '▾ Mở rộng' : '▴ Thu gọn') + '</button>' +
+    '<button class="link" data-act="add-cat">➕ Danh mục</button></span></div>';
+  h += compact ? '<div class="budg">' : '';
   week.budgets.forEach(function(b){
     var used = spentInCategory(week, b.id), over = b.limit > 0 && used > b.limit, pct = b.limit > 0 ? Math.min(100, used / b.limit * 100) : (used ? 100 : 0);
     var msg = b.limit > 0 ? (over ? '⚠️ Vượt ' + money(used - b.limit) : 'Còn ' + money(b.limit - used)) : 'Chưa đặt hạn mức';
-    h += '<button class="bud' + (b.fixed ? ' fixed' : '') + (over ? ' over' : '') + '" data-act="edit-cat" data-c="' + b.id + '"><div class="h"><span class="bic">' + iconOf(b) + '</span><span class="nm">' + esc(b.name) + '</span><span class="v num">' + money(used) + ' <small>/ ' + money(b.limit) + '</small></span></div><div class="bar"><i style="width:' + pct + '%"></i></div><div class="msg">' + msg + '</div></button>';
+    if (compact) h += '<button class="budc' + (over ? ' over' : '') + '" data-act="edit-cat" data-c="' + b.id + '"><div class="h"><span class="bic">' + iconOf(b) + '</span><span class="nm">' + esc(b.name) + '</span></div><div class="bar"><i style="width:' + pct + '%"></i></div><div class="msg num">' + msg + '</div></button>';
+    else h += '<button class="bud' + (b.fixed ? ' fixed' : '') + (over ? ' over' : '') + '" data-act="edit-cat" data-c="' + b.id + '"><div class="h"><span class="bic">' + iconOf(b) + '</span><span class="nm">' + esc(b.name) + '</span><span class="v num">' + money(used) + ' <small>/ ' + money(b.limit) + '</small></span></div><div class="bar"><i style="width:' + pct + '%"></i></div><div class="msg">' + msg + '</div></button>';
   });
+  h += compact ? '</div>' : '';
 
   /* Tổng hạn mức các danh mục so với thu nhập tuần */
   var totalLimit = week.budgets.reduce(function(sum, b){ return sum + (b.limit || 0); }, 0);
@@ -487,7 +512,7 @@ function render(){
         h += '<button class="tx" data-act="edit-tx" data-t="' + t.id + '"><span class="ic" style="color:' + c + '">' + catIcon(week, t.categoryId) + '</span><span class="m"><b>' + esc(t.note || nm) + '</b><small>' + esc(nm) + (isPlanned(t) ? ' · <span style="color:var(--warn)">dự kiến, chưa trừ số dư</span>' : '') + '</small></span><span class="a num">−' + money(t.amount) + '</span></button>';
       });
       h += '<div class="qf" data-day="' + dk + '"><input class="qa num" inputmode="numeric" autocomplete="off" placeholder="Số tiền" aria-label="Số tiền"><select class="qc" aria-label="Danh mục">' + catOpts + '</select>' +
-        '<input class="qn" maxlength="60" autocomplete="off" placeholder="Ghi chú" aria-label="Ghi chú"><button class="qadd" data-act="quick-add" data-day="' + dk + '">+ Thêm</button></div></div>';
+        '<input class="qn" maxlength="60" autocomplete="off" placeholder="Ghi chú" aria-label="Ghi chú"><button class="qadd" data-act="quick-add" data-day="' + dk + '">➕ Thêm</button></div></div>';
     }
     h += '</div>';
   }
@@ -579,7 +604,7 @@ function openIncome(){
   var key = state.weekKey, def = data.settings.defaultIncome || 0;
   openSheet('<h3>Thu nhập tuần ' + weekLabel(key) + '</h3>' + moneyField('inc', incomeOf(key)) +
     '<div class="hint">Mặc định mỗi tuần là ' + money(def) + ' (đổi trong ⚙️ Cài đặt). Sửa ở đây chỉ áp dụng cho riêng tuần này, số dư tự cập nhật đúng phần chênh lệch.</div>' +
-    '<div class="btns">' + (hasOwnIncome(key) ? '<button id="reset">Về mặc định</button>' : '<button data-x="close">Hủy</button>') + '<button class="save" id="ok">Lưu</button></div>', function(el, close){
+    '<div class="btns">' + (hasOwnIncome(key) ? '<button id="reset">↩️ Về mặc định</button>' : '<button data-x="close">✖️ Hủy</button>') + '<button class="save" id="ok">💾 Lưu</button></div>', function(el, close){
     wireMoney(el); setTimeout(function(){ el.querySelector('#inc').focus(); }, 60);
     el.querySelector('#ok').onclick = function(){
       var v = digits(el.querySelector('#inc').value), w = ensureWeek(key);
@@ -604,7 +629,7 @@ function openTx(txId){
     '<div class="lab">Danh mục</div><div class="chips" id="cats">' + cats + '</div>' +
     '<div class="lab">Ngày</div><div class="chips" id="days">' + days + '</div>' +
     '<div class="lab">Ghi chú</div><input class="inp" id="nt" maxlength="60" placeholder="Ví dụ: Cơm tối" value="' + esc(tx ? tx.note : '') + '">' +
-    '<div class="btns">' + (tx ? '<button class="del" id="del">Xóa</button>' : '') + '<button data-x="close">Hủy</button><button class="save" id="ok">' + (tx ? 'Lưu' : 'Thêm') + '</button></div>', function(el, close){
+    '<div class="btns">' + (tx ? '<button class="del" id="del">🗑️ Xóa</button>' : '') + '<button data-x="close">✖️ Hủy</button><button class="save" id="ok">' + (tx ? '💾 Lưu' : '➕ Thêm') + '</button></div>', function(el, close){
     wireMoney(el); if (!tx) setTimeout(function(){ el.querySelector('#amt').focus(); }, 60);
     el.querySelector('#cats').onclick = function(e){ var b = e.target.closest('[data-cat]'); if (!b) return; sel.cat = b.getAttribute('data-cat'); Array.prototype.forEach.call(this.children, function(c){ c.classList.toggle('on', c === b); }); };
     el.querySelector('#days').onclick = function(e){ var b = e.target.closest('[data-day]'); if (!b) return; sel.date = b.getAttribute('data-day'); Array.prototype.forEach.call(this.children, function(c){ c.classList.toggle('on', c === b); }); };
@@ -621,7 +646,7 @@ function openTx(txId){
     };
     if (tx) el.querySelector('#del').onclick = function(){
       close();
-      confirmSheet('Xóa khoản "' + (tx.note || catName(week, tx.categoryId)) + '" ' + money(tx.amount) + '?', 'Xóa', function(){
+      confirmSheet('Xóa khoản "' + (tx.note || catName(week, tx.categoryId)) + '" ' + money(tx.amount) + '?', '🗑️ Xóa', function(){
         var w = ensureWeek(key); w.transactions = w.transactions.filter(function(x){ return x.id !== tx.id; }); commit(); toast('Đã xóa');
       });
     };
@@ -638,7 +663,7 @@ function openCat(catId){
     '<div id="icons">' + ICON_GROUPS.map(function(g){ return '<div class="igl">' + g[0] + '</div><div class="igrid">' + g[1].map(function(ic){ return '<button type="button" class="ib' + ((b ? iconOf(b) : '💸') === ic ? ' on' : '') + '" data-ic="' + ic + '">' + ic + '</button>'; }).join('') + '</div>'; }).join('') + '</div>' +
     '<div class="lab">Hạn mức tuần này</div>' + moneyField('lim', b ? b.limit : 0) +
     '<div class="hint">Chỉ đổi cho tuần ' + weekLabel(key) + ', không ảnh hưởng các tuần khác.</div>' +
-    '<div class="btns">' + (b ? '<button class="del" id="del">Xóa</button>' : '') + '<button data-x="close">Hủy</button><button class="save" id="ok">Lưu</button></div>', function(el, close){
+    '<div class="btns">' + (b ? '<button class="del" id="del">🗑️ Xóa</button>' : '') + '<button data-x="close">✖️ Hủy</button><button class="save" id="ok">💾 Lưu</button></div>', function(el, close){
     wireMoney(el);
     var icon = b ? iconOf(b) : '💸', picked = !!b;
     function setIcon(ic){ icon = ic; el.querySelector('#icur').textContent = ic; Array.prototype.forEach.call(el.querySelectorAll('.ib'), function(x){ x.classList.toggle('on', x.getAttribute('data-ic') === ic); }); }
@@ -662,7 +687,7 @@ function openCat(catId){
       var target = others.filter(function(x){ return x.id === 'unexpected'; })[0] || others[0];
       close();
       confirmSheet((n ? 'Xóa "' + b.name + '"? ' + n + ' khoản chi trong danh mục này sẽ được chuyển sang "' + target.name + '".' : 'Xóa danh mục "' + b.name + '"?') +
-        (fixed ? ' Các tuần mới cũng sẽ không còn mục này.' : ''), 'Xóa', function(){
+        (fixed ? ' Các tuần mới cũng sẽ không còn mục này.' : ''), '🗑️ Xóa', function(){
         var w = ensureWeek(key);
         w.transactions.forEach(function(t){ if (t.categoryId === b.id) t.categoryId = target.id; });
         w.budgets = w.budgets.filter(function(x){ return x.id !== b.id; });
@@ -681,19 +706,29 @@ function openSettings(){
     '<label class="hint" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="neg"' + (s.initialBalance < 0 ? ' checked' : '') + '> Số dư ban đầu là số âm (đang nợ)</label>' +
     '<div class="lab">Thu nhập mặc định mỗi tuần</div>' + moneyField('di', s.defaultIncome) +
     '<div class="hint">Tự cộng vào số dư vào đầu mỗi tuần (thứ Hai), từ tuần ' + weekLabel(startWeekKey()) + ' đến tuần hiện tại. Tuần chưa tới chưa được cộng. Đổi số này sẽ áp dụng cho mọi tuần chưa sửa thu nhập riêng.</div>' +
-    templateFixed().map(function(f, i){ return '<div class="lab">' + (i ? '' : 'Hạn mức mặc định cho tuần mới · ') + f.name + '</div>' + moneyField('d_' + f.id, db[f.id] || 0); }).join('') +
-    '<div class="hint">Hạn mức mặc định chỉ áp dụng cho tuần chưa có dữ liệu, không đổi các tuần đã ghi.</div>' +
-    (hiddenFixed().length ? '<div class="btns" style="margin-top:8px"><button id="rst">↩️ Khôi phục danh mục mặc định đã xóa</button></div><div class="hint">Chỉ áp dụng cho tuần mới. Tuần đã ghi có thể dùng "+ Danh mục" để thêm lại.</div>' : '') +
-    '<div class="btns"><button data-x="close">Hủy</button><button class="save" id="ok">Lưu</button></div>' +
+    '<div class="lab" style="margin-top:22px">Danh mục mặc định cho tuần mới</div>' +
+    templateFixed().map(function(f){ return '<div class="dfrow" data-f="' + f.id + '"><div class="dfh"><span>' + f.icon + ' ' + f.name + '</span><button type="button" class="dfdel" data-del="' + f.id + '">🗑️ Xóa</button></div>' + moneyField('d_' + f.id, db[f.id] || 0) + '</div>'; }).join('') +
+    '<div class="hint">Hạn mức mặc định chỉ áp dụng cho tuần chưa có dữ liệu, không đổi các tuần đã ghi. Mục bị xóa sẽ không còn ở các tuần mới (bấm 💾 Lưu để áp dụng).</div>' +
+    (hiddenFixed().length ? '<div class="btns" style="margin-top:8px"><button id="rst">↩️ Khôi phục danh mục mặc định đã xóa</button></div><div class="hint">Chỉ áp dụng cho tuần mới. Tuần đã ghi có thể dùng "➕ Danh mục" để thêm lại.</div>' : '') +
+    '<div class="btns"><button data-x="close">✖️ Hủy</button><button class="save" id="ok">💾 Lưu</button></div>' +
     '<div class="lab" style="margin-top:22px">Sao lưu dữ liệu</div><div class="btns" style="margin-top:0"><button id="exp">⬇️ Tải file sao lưu</button><button id="imp">⬆️ Khôi phục từ file</button></div>' +
     '<div class="hint">Dữ liệu chỉ nằm trong trình duyệt của máy này. Nên tải file sao lưu mỗi tuần.</div>', function(el, close){
     wireMoney(el);
     if (s.initialBalance < 0) el.querySelector('#ib').value = nf.format(-s.initialBalance);
+    var removed = [];
+    Array.prototype.forEach.call(el.querySelectorAll('[data-del]'), function(btn){
+      btn.onclick = function(){
+        var id = btn.getAttribute('data-del');
+        if (templateFixed().length - removed.length <= 1) { toast('Cần giữ ít nhất 1 danh mục mặc định'); return; }
+        removed.push(id); el.querySelector('.dfrow[data-f="' + id + '"]').remove();
+      };
+    });
     el.querySelector('#ok').onclick = function(){
       var ib = digits(el.querySelector('#ib').value);
       s.initialBalance = el.querySelector('#neg').checked ? -ib : ib;
       s.defaultIncome = digits(el.querySelector('#di').value);
-      templateFixed().forEach(function(f){ db[f.id] = digits(el.querySelector('#d_' + f.id).value); });
+      templateFixed().forEach(function(f){ var x = el.querySelector('#d_' + f.id); if (x) db[f.id] = digits(x.value); });
+      if (removed.length) s.hiddenFixed = hiddenFixed().concat(removed);
       close(); commit(); toast('Đã lưu cài đặt');
     };
     var rst = el.querySelector('#rst');
@@ -714,7 +749,7 @@ function openSettings(){
           try {
             var d = JSON.parse(rd.result); if (!d || !d.settings || !d.weeks) throw 0;
             close();
-            confirmSheet('Thay toàn bộ dữ liệu hiện tại bằng file "' + f.name + '"?', 'Khôi phục', function(){ data = d; commit(); toast('Đã khôi phục'); });
+            confirmSheet('Thay toàn bộ dữ liệu hiện tại bằng file "' + f.name + '"?', '⬆️ Khôi phục', function(){ data = d; commit(); toast('Đã khôi phục'); });
           } catch(e){ toast('File không đúng định dạng'); }
         };
         rd.readAsText(f);
@@ -770,6 +805,7 @@ var actions = {
   'add-tx': function(){ openTx(null); },
   'edit-tx': function(el){ openTx(el.getAttribute('data-t')); },
   'add-cat': function(){ openCat(null); },
+  'toggle-bud': function(el){ data.settings.budCompact = el.getAttribute('aria-expanded') === 'true'; commit(); },
   'edit-cat': function(el){ openCat(el.getAttribute('data-c')); },
   'settings': openSettings,
   'copy-prev': copyPrev,
