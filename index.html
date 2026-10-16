@@ -100,17 +100,16 @@ button:active{transform:scale(.97)}
 .sec .cnt em{font-style:normal;color:var(--bad)}
 .sact{display:flex;align-items:center;gap:6px}
 .tgl{padding:5px 11px;border-radius:20px;font-size:12.5px;font-weight:700;color:var(--muted);border:1px solid var(--line);background:rgba(11,21,48,.7)}
-.budg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
-.budc{display:block;min-width:0;text-align:left;padding:11px;border-radius:16px;background:var(--card);border:1px solid var(--line);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-.budc .h{display:flex;align-items:center;gap:8px;min-width:0}
-.budc .bic{width:30px;height:30px;border-radius:10px;font-size:16px}
-.budc .nm{flex:1;min-width:0;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.budc .bar{height:6px;margin-top:9px}
-.budc .msg{margin-top:6px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.budc.over{border-color:rgba(255,92,138,.6);box-shadow:0 0 30px -14px var(--bad)}
-.budc.over .bic{background:rgba(255,92,138,.14);box-shadow:inset 0 0 0 1px rgba(255,92,138,.4)}
-.budc.over .bar i{background:linear-gradient(90deg,#F43F5E,var(--bad));box-shadow:0 0 12px var(--bad)}
-.budc.over .msg{color:var(--bad);font-weight:600}
+.more{display:flex;align-items:center;gap:10px;width:100%;margin-top:10px;padding:12px 14px;border-radius:16px;text-align:left;background:rgba(11,21,48,.55);border:1px dashed rgba(56,189,248,.35);color:var(--muted);font-size:14px}
+.more .ics{flex:none;letter-spacing:2px;font-size:16px}
+.more .t{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.more .v{font-weight:700;color:var(--text,#fff)}
+.more .chev{color:var(--sky)}
+.more.over{border-color:rgba(255,92,138,.6)}
+.more.over .t{color:var(--bad)}
+.dfadd{display:flex;gap:8px;margin-top:14px}
+.dfadd .inp{flex:1;min-width:0}
+.dfadd button{flex:none;padding:0 14px;border-radius:14px;font-weight:700;color:#fff;border:0;background:linear-gradient(135deg,#2563EB,#0EA5E9)}
 
 .day{margin-top:14px}
 .day .dh{font-size:13px;font-weight:700;color:var(--sky);margin:0 4px 6px}
@@ -333,14 +332,28 @@ function weekTouchesMonth(key, y, m){ return weeksOfMonth(y, m).indexOf(key) >= 
 function makeWeek(key, budgetsFrom){
   var budgets = budgetsFrom
     ? budgetsFrom.map(function(b){ return { id: b.id, name: b.name, limit: b.limit, fixed: !!b.fixed, icon: b.icon }; })
-    : templateFixed().map(function(f){ return { id: f.id, name: f.name, limit: data.settings.defaultBudgets[f.id] || 0, fixed: true, icon: f.icon }; });
+    : templateFixed().map(function(f){ return { id: f.id, name: f.name, limit: f.limit || 0, fixed: true, icon: f.icon }; });
+  if (!budgets.length) budgets = [{ id: 'unexpected', name: 'Phát sinh', limit: 0, fixed: true, icon: '🧾' }];
   return { startDate: key, endDate: toKey(addDays(fromKey(key), 6)), income: null, budgets: budgets, transactions: [], note: '' };
 }
-/* Danh mục mặc định dùng cho tuần mới (bỏ các mục người dùng đã xóa) */
-function hiddenFixed(){ return data.settings.hiddenFixed || []; }
+/* Danh mục mặc định: có ở mọi tuần mới và luôn hiện khi thu gọn ngân sách.
+   Dữ liệu cũ (3 mục cố định + hạn mức mặc định) được chuyển sang danh sách này. */
 function templateFixed(){
-  var list = FIXED.filter(function(f){ return hiddenFixed().indexOf(f.id) < 0; });
-  return list.length ? list : FIXED.filter(function(f){ return f.id === 'unexpected'; });
+  var s = data.settings;
+  if (!s.template) {
+    var hidden = s.hiddenFixed || [], db = s.defaultBudgets || {};
+    s.template = FIXED.filter(function(f){ return hidden.indexOf(f.id) < 0; }).map(function(f){ return { id: f.id, name: f.name, icon: f.icon, limit: db[f.id] || 0 }; });
+  }
+  return s.template;
+}
+function isDefault(id){ return templateFixed().some(function(f){ return f.id === id; }); }
+/* Thêm danh mục mặc định mới vào tuần đang xem và các tuần sau đã ghi */
+function addDefaultToWeeks(f){
+  Object.keys(data.weeks).forEach(function(k){
+    var w = data.weeks[k];
+    if ((k >= state.weekKey || k >= thisWeekKey()) && !w.budgets.some(function(b){ return b.id === f.id; }))
+      w.budgets.push({ id: f.id, name: f.name, limit: f.limit || 0, fixed: true, icon: f.icon });
+  });
 }
 function getWeek(key){ return data.weeks[key] || makeWeek(key); }
 function ensureWeek(key){ if (!data.weeks[key]) data.weeks[key] = makeWeek(key); return data.weeks[key]; }
@@ -471,20 +484,25 @@ function render(){
   }
 
   /* Ngân sách */
-  /* Thu gọn: lưới 2 cột nhỏ gọn; mặc định thu gọn khi có hơn 4 danh mục */
-  var compact = data.settings.budCompact != null ? data.settings.budCompact : week.budgets.length > 4;
-  var nOver = week.budgets.filter(function(b){ return b.limit > 0 && spentInCategory(week, b.id) > b.limit; }).length;
+  /* Thu gọn (mặc định): chỉ hiện danh mục mặc định, các mục khác gộp thành 1 dòng */
+  var compact = data.settings.budCompact !== false;
+  var isOver = function(b){ return b.limit > 0 && spentInCategory(week, b.id) > b.limit; };
+  var others = week.budgets.filter(function(b){ return !isDefault(b.id); });
+  var nOver = week.budgets.filter(isOver).length;
   h += '<div class="sec"><h2>Ngân sách <span class="cnt">' + week.budgets.length + (nOver ? ' · <em>' + nOver + ' vượt</em>' : '') + '</span></h2><span class="sact">' +
-    '<button class="tgl" data-act="toggle-bud" aria-expanded="' + !compact + '">' + (compact ? '▾ Mở rộng' : '▴ Thu gọn') + '</button>' +
+    (others.length ? '<button class="tgl" data-act="toggle-bud" aria-expanded="' + !compact + '">' + (compact ? '▾ Hiện tất cả' : '▴ Thu gọn') + '</button>' : '') +
     '<button class="link" data-act="add-cat">➕ Danh mục</button></span></div>';
-  h += compact ? '<div class="budg">' : '';
   week.budgets.forEach(function(b){
+    if (compact && !isDefault(b.id)) return;
     var used = spentInCategory(week, b.id), over = b.limit > 0 && used > b.limit, pct = b.limit > 0 ? Math.min(100, used / b.limit * 100) : (used ? 100 : 0);
     var msg = b.limit > 0 ? (over ? '⚠️ Vượt ' + money(used - b.limit) : 'Còn ' + money(b.limit - used)) : 'Chưa đặt hạn mức';
-    if (compact) h += '<button class="budc' + (over ? ' over' : '') + '" data-act="edit-cat" data-c="' + b.id + '"><div class="h"><span class="bic">' + iconOf(b) + '</span><span class="nm">' + esc(b.name) + '</span></div><div class="bar"><i style="width:' + pct + '%"></i></div><div class="msg num">' + msg + '</div></button>';
-    else h += '<button class="bud' + (b.fixed ? ' fixed' : '') + (over ? ' over' : '') + '" data-act="edit-cat" data-c="' + b.id + '"><div class="h"><span class="bic">' + iconOf(b) + '</span><span class="nm">' + esc(b.name) + '</span><span class="v num">' + money(used) + ' <small>/ ' + money(b.limit) + '</small></span></div><div class="bar"><i style="width:' + pct + '%"></i></div><div class="msg">' + msg + '</div></button>';
+    h += '<button class="bud' + (isDefault(b.id) ? ' fixed' : '') + (over ? ' over' : '') + '" data-act="edit-cat" data-c="' + b.id + '"><div class="h"><span class="bic">' + iconOf(b) + '</span><span class="nm">' + esc(b.name) + '</span><span class="v num">' + money(used) + ' <small>/ ' + money(b.limit) + '</small></span></div><div class="bar"><i style="width:' + pct + '%"></i></div><div class="msg">' + msg + '</div></button>';
   });
-  h += compact ? '</div>' : '';
+  if (compact && others.length) {
+    var oSpent = others.reduce(function(sum, b){ return sum + spentInCategory(week, b.id); }, 0), oOver = others.filter(isOver).length;
+    h += '<button class="more' + (oOver ? ' over' : '') + '" data-act="toggle-bud" aria-expanded="false"><span class="ics">' + others.slice(0, 4).map(iconOf).join('') + '</span>' +
+      '<span class="t">… ' + others.length + ' danh mục khác' + (oOver ? ' · ⚠️ ' + oOver + ' vượt' : '') + '</span><span class="v num">' + money(oSpent) + '</span><span class="chev">▾</span></button>';
+  }
 
   /* Tổng hạn mức các danh mục so với thu nhập tuần */
   var totalLimit = week.budgets.reduce(function(sum, b){ return sum + (b.limit || 0); }, 0);
@@ -655,10 +673,10 @@ function openTx(txId){
 
 function openCat(catId){
   var key = state.weekKey, week = getWeek(key), b = catId ? week.budgets.filter(function(x){ return x.id === catId; })[0] : null;
-  var fixed = b && b.fixed;
+  var fixed = !!(b && isDefault(b.id));
   openSheet('<h3>' + (b ? 'Sửa danh mục' : 'Thêm danh mục') + '</h3>' +
-    '<div class="lab">Tên danh mục</div><input class="inp" id="cn" maxlength="30" ' + (fixed ? 'disabled ' : '') + 'placeholder="Ví dụ: Đi lại" value="' + esc(b ? b.name : '') + '">' +
-    (fixed ? '<div class="hint">Đây là danh mục mặc định. Nếu xóa, các tuần mới cũng sẽ không còn mục này (có thể khôi phục trong Cài đặt).</div>' : '') +
+    '<div class="lab">Tên danh mục</div><input class="inp" id="cn" maxlength="30" placeholder="Ví dụ: Đi lại" value="' + esc(b ? b.name : '') + '">' +
+    '<label class="hint" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="isdef"' + (fixed ? ' checked' : '') + '> ⭐ Danh mục mặc định (luôn hiện khi thu gọn, có sẵn ở tuần mới)</label>' +
     '<div class="lab">Biểu tượng</div><div class="icurrent"><span class="big" id="icur">' + (b ? iconOf(b) : '💸') + '</span><span class="hint" style="margin:0">Chọn một biểu tượng bên dưới' + (b ? '' : ', hoặc gõ tên để app tự gợi ý') + '</span></div>' +
     '<div id="icons">' + ICON_GROUPS.map(function(g){ return '<div class="igl">' + g[0] + '</div><div class="igrid">' + g[1].map(function(ic){ return '<button type="button" class="ib' + ((b ? iconOf(b) : '💸') === ic ? ' on' : '') + '" data-ic="' + ic + '">' + ic + '</button>'; }).join('') + '</div>'; }).join('') + '</div>' +
     '<div class="lab">Hạn mức tuần này</div>' + moneyField('lim', b ? b.limit : 0) +
@@ -668,13 +686,19 @@ function openCat(catId){
     var icon = b ? iconOf(b) : '💸', picked = !!b;
     function setIcon(ic){ icon = ic; el.querySelector('#icur').textContent = ic; Array.prototype.forEach.call(el.querySelectorAll('.ib'), function(x){ x.classList.toggle('on', x.getAttribute('data-ic') === ic); }); }
     el.querySelector('#icons').onclick = function(e){ var x = e.target.closest('[data-ic]'); if (!x) return; picked = true; setIcon(x.getAttribute('data-ic')); };
-    if (!fixed) el.querySelector('#cn').addEventListener('input', function(e){ if (!picked) setIcon(guessIcon(e.target.value)); });
+    el.querySelector('#cn').addEventListener('input', function(e){ if (!picked) setIcon(guessIcon(e.target.value)); });
     el.querySelector('#ok').onclick = function(){
-      var name = fixed ? b.name : el.querySelector('#cn').value.trim();
+      var name = el.querySelector('#cn').value.trim();
       if (!name) { toast('Nhập tên danh mục'); return; }
-      var w = ensureWeek(key), limit = digits(el.querySelector('#lim').value);
-      if (b) { var t = w.budgets.filter(function(x){ return x.id === b.id; })[0]; t.name = name; t.limit = limit; t.icon = icon; }
-      else w.budgets.push({ id: 'c' + Date.now().toString(36), name: name, limit: limit, fixed: false, icon: icon });
+      var w = ensureWeek(key), limit = digits(el.querySelector('#lim').value), def = el.querySelector('#isdef').checked;
+      if (!def && fixed && templateFixed().length <= 1) { toast('Cần giữ ít nhất 1 danh mục mặc định'); return; }
+      var id = b ? b.id : 'c' + Date.now().toString(36);
+      if (b) { var t = w.budgets.filter(function(x){ return x.id === b.id; })[0]; t.name = name; t.limit = limit; t.icon = icon; t.fixed = def; }
+      else w.budgets.push({ id: id, name: name, limit: limit, fixed: def, icon: icon });
+      var tf = templateFixed().filter(function(f){ return f.id === id; })[0];
+      if (def && tf) { tf.name = name; tf.icon = icon; }
+      else if (def) templateFixed().push({ id: id, name: name, icon: icon, limit: limit });
+      else if (tf) data.settings.template = templateFixed().filter(function(f){ return f.id !== id; });
       close(); commit();
       var tl = w.budgets.reduce(function(sum, x){ return sum + (x.limit || 0); }, 0);
       var wi = incomeOf(key); if (wi > 0 && tl > wi) toast('⚠️ Tổng hạn mức ' + money(tl) + ' / ' + money(wi) + ': vượt ' + money(tl - wi) + ' trong tuần');
@@ -691,7 +715,7 @@ function openCat(catId){
         var w = ensureWeek(key);
         w.transactions.forEach(function(t){ if (t.categoryId === b.id) t.categoryId = target.id; });
         w.budgets = w.budgets.filter(function(x){ return x.id !== b.id; });
-        if (fixed && hiddenFixed().indexOf(b.id) < 0) data.settings.hiddenFixed = hiddenFixed().concat(b.id);
+        if (fixed && templateFixed().length > 1) data.settings.template = templateFixed().filter(function(f){ return f.id !== b.id; });
         if (data.lastCat === b.id) data.lastCat = target.id;
         commit(); toast('Đã xóa danh mục');
       });
@@ -700,39 +724,64 @@ function openCat(catId){
 }
 
 function openSettings(){
-  var s = data.settings, db = s.defaultBudgets;
+  var s = data.settings;
+  var tpl = templateFixed().map(function(f){ return { id: f.id, name: f.name, icon: f.icon, limit: f.limit || 0 }; }), added = [];
   openSheet('<h3>Cài đặt</h3>' +
     '<div class="lab">Số dư ban đầu (tiền đang có trước khi dùng app)</div>' + moneyField('ib', s.initialBalance) +
     '<label class="hint" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="neg"' + (s.initialBalance < 0 ? ' checked' : '') + '> Số dư ban đầu là số âm (đang nợ)</label>' +
     '<div class="lab">Thu nhập mặc định mỗi tuần</div>' + moneyField('di', s.defaultIncome) +
     '<div class="hint">Tự cộng vào số dư vào đầu mỗi tuần (thứ Hai), từ tuần ' + weekLabel(startWeekKey()) + ' đến tuần hiện tại. Tuần chưa tới chưa được cộng. Đổi số này sẽ áp dụng cho mọi tuần chưa sửa thu nhập riêng.</div>' +
     '<div class="lab" style="margin-top:22px">Danh mục mặc định cho tuần mới</div>' +
-    templateFixed().map(function(f){ return '<div class="dfrow" data-f="' + f.id + '"><div class="dfh"><span>' + f.icon + ' ' + f.name + '</span><button type="button" class="dfdel" data-del="' + f.id + '">🗑️ Xóa</button></div>' + moneyField('d_' + f.id, db[f.id] || 0) + '</div>'; }).join('') +
-    '<div class="hint">Hạn mức mặc định chỉ áp dụng cho tuần chưa có dữ liệu, không đổi các tuần đã ghi. Mục bị xóa sẽ không còn ở các tuần mới (bấm 💾 Lưu để áp dụng).</div>' +
-    (hiddenFixed().length ? '<div class="btns" style="margin-top:8px"><button id="rst">↩️ Khôi phục danh mục mặc định đã xóa</button></div><div class="hint">Chỉ áp dụng cho tuần mới. Tuần đã ghi có thể dùng "➕ Danh mục" để thêm lại.</div>' : '') +
+    '<div id="dfl"></div>' +
+    '<div class="dfadd"><input class="inp" id="dfn" maxlength="30" placeholder="Tên danh mục mới, ví dụ: Đi lại"><button type="button" id="dfok">➕ Thêm</button></div>' +
+    '<div class="chips" id="dfsug" style="margin-top:8px"></div>' +
+    '<div class="hint">Danh mục mặc định luôn hiện khi thu gọn ngân sách và có sẵn ở tuần mới. Hạn mức mặc định chỉ áp dụng cho tuần chưa có dữ liệu. Bấm 💾 Lưu để áp dụng.</div>' +
     '<div class="btns"><button data-x="close">✖️ Hủy</button><button class="save" id="ok">💾 Lưu</button></div>' +
     '<div class="lab" style="margin-top:22px">Sao lưu dữ liệu</div><div class="btns" style="margin-top:0"><button id="exp">⬇️ Tải file sao lưu</button><button id="imp">⬆️ Khôi phục từ file</button></div>' +
     '<div class="hint">Dữ liệu chỉ nằm trong trình duyệt của máy này. Nên tải file sao lưu mỗi tuần.</div>', function(el, close){
     wireMoney(el);
     if (s.initialBalance < 0) el.querySelector('#ib').value = nf.format(-s.initialBalance);
-    var removed = [];
-    Array.prototype.forEach.call(el.querySelectorAll('[data-del]'), function(btn){
-      btn.onclick = function(){
-        var id = btn.getAttribute('data-del');
-        if (templateFixed().length - removed.length <= 1) { toast('Cần giữ ít nhất 1 danh mục mặc định'); return; }
-        removed.push(id); el.querySelector('.dfrow[data-f="' + id + '"]').remove();
-      };
-    });
+    var list = el.querySelector('#dfl'), sug = el.querySelector('#dfsug');
+    function readLimits(){ tpl.forEach(function(f){ var x = el.querySelector('#d_' + f.id); if (x) f.limit = digits(x.value); }); }
+    function has(id, name){ return tpl.some(function(f){ return f.id === id || f.name.toLowerCase() === String(name).toLowerCase(); }); }
+    function addTpl(f){ if (has(f.id, f.name)) { toast('Đã có danh mục "' + f.name + '"'); return; } readLimits(); tpl.push(f); added.push(f.id); renderTpl(); }
+    /* Gợi ý thêm lại: 3 mục gốc đã xóa + danh mục riêng của tuần đang xem */
+    function suggestions(){
+      var out = FIXED.map(function(f){ return { id: f.id, name: f.name, icon: f.icon, limit: (s.defaultBudgets || {})[f.id] || 0 }; });
+      getWeek(state.weekKey).budgets.forEach(function(b){ out.push({ id: b.id, name: b.name, icon: iconOf(b), limit: b.limit || 0 }); });
+      return out.filter(function(f, i){ return !has(f.id, f.name) && out.findIndex(function(x){ return x.id === f.id; }) === i; });
+    }
+    function renderTpl(){
+      list.innerHTML = tpl.map(function(f){ return '<div class="dfrow"><div class="dfh"><span>' + f.icon + ' ' + esc(f.name) + '</span><button type="button" class="dfdel" data-del="' + f.id + '">🗑️ Xóa</button></div>' + moneyField('d_' + f.id, f.limit) + '</div>'; }).join('');
+      wireMoney(list);
+      var sg = suggestions();
+      sug.innerHTML = sg.length ? '<span class="hint" style="width:100%;margin:0">↩️ Thêm lại nhanh:</span>' + sg.map(function(f){ return '<button type="button" class="chip" data-sug="' + f.id + '">➕ ' + f.icon + ' ' + esc(f.name) + '</button>'; }).join('') : '';
+    }
+    renderTpl();
+    list.onclick = function(e){
+      var btn = e.target.closest('[data-del]'); if (!btn) return;
+      if (tpl.length <= 1) { toast('Cần giữ ít nhất 1 danh mục mặc định'); return; }
+      readLimits(); var id = btn.getAttribute('data-del');
+      tpl = tpl.filter(function(f){ return f.id !== id; }); added = added.filter(function(x){ return x !== id; }); renderTpl();
+    };
+    sug.onclick = function(e){
+      var btn = e.target.closest('[data-sug]'); if (!btn) return;
+      addTpl(suggestions().filter(function(f){ return f.id === btn.getAttribute('data-sug'); })[0]);
+    };
+    el.querySelector('#dfok').onclick = function(){
+      var inp = el.querySelector('#dfn'), name = inp.value.trim();
+      if (!name) { toast('Nhập tên danh mục'); inp.focus(); return; }
+      addTpl({ id: 'c' + Date.now().toString(36), name: name, icon: guessIcon(name), limit: 0 }); inp.value = '';
+    };
+    el.querySelector('#dfn').addEventListener('keydown', function(e){ if (e.key === 'Enter') el.querySelector('#dfok').click(); });
     el.querySelector('#ok').onclick = function(){
       var ib = digits(el.querySelector('#ib').value);
       s.initialBalance = el.querySelector('#neg').checked ? -ib : ib;
       s.defaultIncome = digits(el.querySelector('#di').value);
-      templateFixed().forEach(function(f){ var x = el.querySelector('#d_' + f.id); if (x) db[f.id] = digits(x.value); });
-      if (removed.length) s.hiddenFixed = hiddenFixed().concat(removed);
+      readLimits(); s.template = tpl;
+      tpl.forEach(function(f){ if (added.indexOf(f.id) >= 0) addDefaultToWeeks(f); });
       close(); commit(); toast('Đã lưu cài đặt');
     };
-    var rst = el.querySelector('#rst');
-    if (rst) rst.onclick = function(){ data.settings.hiddenFixed = []; close(); commit(); toast('Đã khôi phục danh mục mặc định'); };
     el.querySelector('#exp').onclick = function(){
       try {
         var blob = new Blob([JSON.stringify(data)], { type: 'application/json' }), a = document.createElement('a');
